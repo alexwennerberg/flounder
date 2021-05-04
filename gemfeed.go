@@ -4,6 +4,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"github.com/gorilla/feeds"
 	"io/ioutil"
 	"net/url"
@@ -13,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"git.sr.ht/~adnano/go-gemini"
 )
 
 type Gemfeed struct {
@@ -81,36 +84,40 @@ func generateFeedFromUser(user string) *Gemfeed {
 			entry.Date = date
 			entry.DateString = base[:10]
 			entry.Feed = &feed
-			f, err := os.Open(thepath)
-			if err != nil {
-				return nil
-			}
-			defer f.Close()
-			scanner := bufio.NewScanner(f)
-			for scanner.Scan() {
-				// skip blank lines
-				if scanner.Text() == "" {
-					continue
-				}
-				line := scanner.Text()
-				if strings.HasPrefix(line, "#") {
-					entry.Title = strings.Trim(line, "# \t")
-				} else {
-					var title string
-					if len(line) > 50 {
-						title = line[:50]
-					} else {
-						title = line
-					}
-					entry.Title = "[" + title + "...]"
-				}
-				break
-			}
 			content, err := ioutil.ReadFile(thepath)
 			if err != nil {
 				return nil
 			}
-			entry.Content = string(content)
+			parse, _ := gemini.ParseText(bytes.NewReader(content))
+			htmlDoc := textToHTML(nil, parse)
+			if htmlDoc.Title != "" {
+				// look for a title in headings
+				entry.Title = htmlDoc.Title
+			} else {
+				// look for a title in lines
+				f, err := os.Open(thepath)
+				if err != nil {
+					return nil
+				}
+				defer f.Close()
+				scanner := bufio.NewScanner(f)
+				for scanner.Scan() {
+					// skip blank lines
+					if scanner.Text() == "" {
+						continue
+					}
+					line := scanner.Text()
+						var title string
+						if len(line) > 50 {
+							title = line[:50]
+						} else {
+							title = line
+						}
+						entry.Title = "[" + title + "...]"
+					break
+				}
+			}
+			entry.Content = htmlDoc.Content
 			entry.File = getLocalPath(thepath)
 			u := urlFromPath(thepath)
 			entry.Url = &u
